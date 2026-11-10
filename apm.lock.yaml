@@ -1,0 +1,121 @@
+lockfile_version: '1'
+apm_version: 0.35.0
+dependencies:
+- repo_url: docker/sandbox-kit-spec
+  name: sandbox-kit-spec
+  host: github.com
+  resolved_commit: 6b0bc2504942eb9335447d5035425536d9c495d6
+  resolved_ref: v3.0.0-m.12
+  version: unknown
+  package_type: skill_bundle
+  deployed_files:
+  - .claude/skills/create-kit-v3
+  - .claude/skills/create-kit-v3/RECIPES.md
+  - .claude/skills/create-kit-v3/SKILL.md
+  - .claude/skills/migrate-kit-to-v3
+  - .claude/skills/migrate-kit-to-v3/FIELD-MAPPING.md
+  - .claude/skills/migrate-kit-to-v3/SKILL.md
+  - .claude/skills/sbxenv
+  - .claude/skills/sbxenv/REFERENCE.md
+  - .claude/skills/sbxenv/SKILL.md
+  - .claude/skills/sbxenv/scripts/kits.py
+  deployed_file_hashes:
+    .claude/skills/create-kit-v3/RECIPES.md: sha256:00a08961d560035a7cb161aff4eea68ed42d8ef1e410d56c2f2b3fafd8f39a3d
+    .claude/skills/create-kit-v3/SKILL.md: sha256:a9cc62b948b35c9e131b70999719538a8d5f6aff0f64665ad63c5e1c5a1e0bac
+    .claude/skills/migrate-kit-to-v3/FIELD-MAPPING.md: sha256:dd4319334d5adf59c23299caf5cd6f03571163975650d51f04c8e21a054a8cd4
+    .claude/skills/migrate-kit-to-v3/SKILL.md: sha256:4147a411641edb15d937a0ef784fcaf2b04c272bae5f606c71a9d8bc21a2601e
+    .claude/skills/sbxenv/REFERENCE.md: sha256:e1d09358f496bb9cfb6f267127eb12fa985f6a848204379ec018d3cd723b0ffe
+    .claude/skills/sbxenv/SKILL.md: sha256:8ea41a5cde0014d37e6e3dc7ce7329ae93d094e65859bd3aa502553022114d29
+    .claude/skills/sbxenv/scripts/kits.py: sha256:1ca05d5ff22734f7d7c8e07bf6e26ede2d1fd9f0f9e99f425eb8116fba0e05b8
+  content_hash: sha256:2f8c5bd7f71662623b32813ca43ed86a4669bccecd99f2d9e5d17c5dcfd06351
+deployments:
+- kind: project-relative
+  target: claude
+  value: .claude/skills/create-kit-v3
+  runtime: null
+  scope: project
+  owners:
+  - docker/sandbox-kit-spec
+  active_owner: docker/sandbox-kit-spec
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/create-kit-v3/RECIPES.md
+  runtime: null
+  scope: project
+  owners:
+  - docker/sandbox-kit-spec
+  active_owner: docker/sandbox-kit-spec
+  content_hash: sha256:00a08961d560035a7cb161aff4eea68ed42d8ef1e410d56c2f2b3fafd8f39a3d
+- kind: project-relative
+  target: claude
+  value: .claude/skills/create-kit-v3/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - docker/sandbox-kit-spec
+  active_owner: docker/sandbox-kit-spec
+  content_hash: sha256:a9cc62b948b35c9e131b70999719538a8d5f6aff0f64665ad63c5e1c5a1e0bac
+- kind: project-relative
+  target: claude
+  value: .claude/skills/migrate-kit-to-v3
+  runtime: null
+  scope: project
+  owners:
+  - docker/sandbox-kit-spec
+  active_owner: docker/sandbox-kit-spec
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/migrate-kit-to-v3/FIELD-MAPPING.md
+  runtime: null
+  scope: project
+  owners:
+  - docker/sandbox-kit-spec
+  active_owner: docker/sandbox-kit-spec
+  content_hash: sha256:dd4319334d5adf59c23299caf5cd6f03571163975650d51f04c8e21a054a8cd4
+- kind: project-relative
+  target: claude
+  value: .claude/skills/migrate-kit-to-v3/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - docker/sandbox-kit-spec
+  active_owner: docker/sandbox-kit-spec
+  content_hash: sha256:4147a411641edb15d937a0ef784fcaf2b04c272bae5f606c71a9d8bc21a2601e
+- kind: project-relative
+  target: claude
+  value: .claude/skills/sbxenv
+  runtime: null
+  scope: project
+  owners:
+  - docker/sandbox-kit-spec
+  active_owner: docker/sandbox-kit-spec
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/sbxenv/REFERENCE.md
+  runtime: null
+  scope: project
+  owners:
+  - docker/sandbox-kit-spec
+  active_owner: docker/sandbox-kit-spec
+  content_hash: sha256:e1d09358f496bb9cfb6f267127eb12fa985f6a848204379ec018d3cd723b0ffe
+- kind: project-relative
+  target: claude
+  value: .claude/skills/sbxenv/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - docker/sandbox-kit-spec
+  active_owner: docker/sandbox-kit-spec
+  content_hash: sha256:8ea41a5cde0014d37e6e3dc7ce7329ae93d094e65859bd3aa502553022114d29
+- kind: project-relative
+  target: claude
+  value: .claude/skills/sbxenv/scripts/kits.py
+  runtime: null
+  scope: project
+  owners:
+  - docker/sandbox-kit-spec
+  active_owner: docker/sandbox-kit-spec
+  content_hash: sha256:1ca05d5ff22734f7d7c8e07bf6e26ede2d1fd9f0f9e99f425eb8116fba0e05b8
