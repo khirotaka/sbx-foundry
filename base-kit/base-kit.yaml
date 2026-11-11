@@ -1,0 +1,152 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+kind: mixin
+displayName: Base Kit
+description: 全プロジェクト共通のベース。bash ログインシェルと、Claude Desktop 用の sshd。
+
+# このキット自身のバージョン。provides: ["base-kit"] はここから
+# base-kit@0.2.0 として公開される。宣言を変えたら上げる。
+version: "0.2.0"
+
+# projects/ 配下のキットは `requires: ["base-kit"]` でこのキットを前提にできる。
+provides: ["base-kit"]
+
+# requires は書かない。
+#  - Git 署名は公式 sbx/git-ssh-sign を一緒に載せる（公式は provides を宣言して
+#    いないため、requires に書くと compose が拒否される）。
+#  - install フックは apt-get を使うが、無い base では deb/apt を要求して
+#    compose を拒否するより、フック内で probe して分かるメッセージで失敗させる。
+#    （この silence は意図的。足し戻さないこと）
+
+capabilities:
+  # sshd を入れるための apt。runtime には何も許可しない（sshd は待ち受けるだけ）。
+  # base は Debian 13 (trixie)。sources は deb.debian.org と dhi.io。
+  # 拒否された場合は sbx のログに出るホストをここに足す。
+  - type: com.docker.sandbox/network-policy@1
+    config:
+      install:
+        allow:
+          - deb.debian.org
+          - dhi.io
+
+  # 公開ポート 22 (sshd)。ホスト側は一時ポートが割り当てられるので、
+  # 固定したい場合は `sbx ports <name> --publish 2222:22` を使う。
+  - type: com.docker.sandbox/port@1
+    config:
+      name: sshd
+      container: 22
+      transport: tcp
+
+  - type: com.docker.sandbox/lifecycle@1
+    config:
+      install:
+        - description: ssh ログイン時のシェルを bash にする
+          command: |
+            set -eu
+
+            bash_path=$(command -v bash) || {
+              echo "[base-kit] bash not found; skip login shell setup" >&2
+              exit 0
+            }
+
+            # 1) 本命: agent ユーザーのログインシェルを bash にする。
+            grep -qx "$bash_path" /etc/shells 2>/dev/null || echo "$bash_path" >> /etc/shells
+            if command -v usermod >/dev/null 2>&1; then
+              usermod -s "$bash_path" agent
+            elif command -v chsh >/dev/null 2>&1; then
+              chsh -s "$bash_path" agent
+            else
+              echo "[base-kit] usermod/chsh not found; rely on profile fallback" >&2
+            fi
+
+            # 2) 保険: 何かの理由で sh のまま入った場合に bash -l へ乗り換える。
+            #    対話シェルのときだけ動かす（`ssh host cmd` のような非対話は触らない）。
+            mkdir -p /etc/profile.d
+            cat > /etc/profile.d/00-base-kit-bash.sh <<'EOF'
+            # Installed by base-kit: hand an interactive sh login over to bash.
+            case "$-" in
+              *i*)
+                if [ -z "${BASH_VERSION:-}" ] && command -v bash >/dev/null 2>&1; then
+                  exec bash -l
+                fi
+                ;;
+            esac
+            EOF
+            chmod 0644 /etc/profile.d/00-base-kit-bash.sh
+
+        - description: openssh-server を入れる
+          user: "0"
+          # hook の環境は deny-by-default。apt が proxy 経由で出るために必要。
+          env: [HTTP_PROXY, HTTPS_PROXY, http_proxy, https_proxy, NO_PROXY, no_proxy]
+          command: |
+            set -eu
+            command -v apt-get >/dev/null 2>&1 || {
+              echo "[base-kit] apt-get not found: this base cannot install openssh-server" >&2
+              exit 1
+            }
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y -qq --no-install-recommends openssh-server
+            ssh-keygen -A
+
+        - description: sshd の設定（公開鍵認証のみ、~/.ssh/environment を許可）
+          user: "0"
+          command: |
+            set -eu
+            mkdir -p /etc/ssh/sshd_config.d /run/sshd
+            # Debian の sshd_config は Include を持つが、無い場合に備えて確認する。
+            grep -q '^Include /etc/ssh/sshd_config.d/' /etc/ssh/sshd_config \
+              || echo 'Include /etc/ssh/sshd_config.d/*.conf' >> /etc/ssh/sshd_config
+            cat > /etc/ssh/sshd_config.d/10-base-kit.conf <<'EOF'
+            PasswordAuthentication no
+            KbdInteractiveAuthentication no
+            PubkeyAuthentication yes
+            AllowUsers agent
+            # sshd のセッションは環境変数が空になる。startup フックが PID 1 の環境から
+            # proxy / CA / SSH_AUTH_SOCK を ~/.ssh/environment に写す。
+            PermitUserEnvironment yes
+            EOF
+            # agent が「ロック」状態だと、鍵があっても sshd に拒否されることがある。
+            # パスワードは持たせず、ロックだけ外す。
+            usermod -p '*' agent || true
+            install -d -m 0700 -o agent -g agent /home/agent/.ssh
+            sshd -t
+
+      startup:
+        - description: PID 1 の環境（proxy / CA / SSH_AUTH_SOCK）を ssh セッション用に書き出す
+          user: "0"
+          command: |
+            set -eu
+            tmp=$(mktemp)
+            tr '\0' '\n' < /proc/1/environ \
+              | grep -E '^(HTTP_PROXY|HTTPS_PROXY|NO_PROXY|http_proxy|https_proxy|no_proxy|PROXY_CA_CERT_B64|NODE_USE_ENV_PROXY|NODE_EXTRA_CA_CERTS|SSL_CERT_FILE|REQUESTS_CA_BUNDLE|SSH_AUTH_SOCK)=' \
+              > "$tmp" || true
+            install -d -m 0700 -o agent -g agent /home/agent/.ssh
+            install -m 0600 -o agent -g agent "$tmp" /home/agent/.ssh/environment
+            rm -f "$tmp"
+
+        - description: 転送された SSH agent の公開鍵から authorized_keys を作る
+          user: "1000"
+          env: [SSH_AUTH_SOCK]
+          command: |
+            # 起動フックには SSH_AUTH_SOCK が来ない場合があるので PID 1 の環境にも当たる。
+            sock="${SSH_AUTH_SOCK:-}"
+            if [ -z "$sock" ]; then
+              sock=$(tr '\0' '\n' < /proc/1/environ | sed -n 's/^SSH_AUTH_SOCK=//p' | head -n 1)
+            fi
+            if [ -z "$sock" ] || [ ! -S "$sock" ]; then
+              echo "[base-kit] no agent socket; keeping existing authorized_keys" >&2
+              exit 0
+            fi
+            keys=$(SSH_AUTH_SOCK="$sock" ssh-add -L 2>&1) || {
+              echo "[base-kit] ssh-add failed; keeping existing authorized_keys" >&2
+              exit 0
+            }
+            [ -n "$keys" ] || exit 0
+            printf '%s\n' "$keys" > /home/agent/.ssh/authorized_keys
+            chmod 600 /home/agent/.ssh/authorized_keys
+
+        - description: sshd を起動する（コンテナ再起動で /run/sshd が消えるので作り直す）
+          user: "0"
+          command: |
+            pgrep -x sshd >/dev/null || { mkdir -p /run/sshd && /usr/sbin/sshd; }
