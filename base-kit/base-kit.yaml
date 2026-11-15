@@ -5,8 +5,8 @@ displayName: Base Kit
 description: 全プロジェクト共通のベース。bash ログインシェルと、Claude Desktop 用の sshd。
 
 # このキット自身のバージョン。provides: ["base-kit"] はここから
-# base-kit@0.2.0 として公開される。宣言を変えたら上げる。
-version: "0.2.0"
+# base-kit@0.2.2 として公開される。宣言を変えたら上げる。
+version: "0.2.2"
 
 # projects/ 配下のキットは `requires: ["base-kit"]` でこのキットを前提にできる。
 provides: ["base-kit"]
@@ -74,6 +74,27 @@ capabilities:
             EOF
             chmod 0644 /etc/profile.d/00-base-kit-bash.sh
 
+        - description: DHI のバナーを対話シェルだけに限定する
+          user: "0"
+          command: |
+            set -eu
+            # DHI ベースの /etc/profile.d/01-dhi.sh は、対話かどうかを見ずに、
+            # $HOME ごとの初回の login shell でバナー（ANSI 付き）を stdout に出す。
+            # HOME を変えて `bash -lc` を起動するテストなどが、出力の頭にバナーを拾って壊れる。
+            # 元のスクリプトは残し、対話シェルのときだけ読み込む。
+            f=/etc/profile.d/01-dhi.sh
+            if [ -f "$f" ] && ! grep -q 'base-kit' "$f"; then
+              mkdir -p /usr/local/share/base-kit
+              mv "$f" /usr/local/share/base-kit/dhi-banner.sh
+              cat > "$f" <<'EOF'
+            # Installed by base-kit: show the DHI banner in interactive shells only.
+            case "$-" in
+              *i*) . /usr/local/share/base-kit/dhi-banner.sh ;;
+            esac
+            EOF
+              chmod 0644 "$f"
+            fi
+
         - description: openssh-server を入れる
           user: "0"
           # hook の環境は deny-by-default。apt が proxy 経由で出るために必要。
@@ -121,6 +142,19 @@ capabilities:
             tr '\0' '\n' < /proc/1/environ \
               | grep -E '^(HTTP_PROXY|HTTPS_PROXY|NO_PROXY|http_proxy|https_proxy|no_proxy|PROXY_CA_CERT_B64|NODE_USE_ENV_PROXY|NODE_EXTRA_CA_CERTS|SSL_CERT_FILE|REQUESTS_CA_BUNDLE|SSH_AUTH_SOCK)=' \
               > "$tmp" || true
+            # 他の kit が /etc/base-kit/no-proxy.d/*.list（1 行 1 宛先）に置いた宛先を、
+            # NO_PROXY / no_proxy に足す。VM の中にしか無いネットワーク（kind の docker network
+            # など）への通信を、egress proxy から外すために使う。
+            extra=$(cat /etc/base-kit/no-proxy.d/*.list 2>/dev/null | tr '\n' ',' | sed 's/,$//') || extra=
+            if [ -n "$extra" ]; then
+              for v in NO_PROXY no_proxy; do
+                if grep -q "^$v=" "$tmp"; then
+                  sed "s|^$v=\(.*\)\$|$v=\1,$extra|" "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
+                else
+                  echo "$v=$extra" >> "$tmp"
+                fi
+              done
+            fi
             install -d -m 0700 -o agent -g agent /home/agent/.ssh
             install -m 0600 -o agent -g agent "$tmp" /home/agent/.ssh/environment
             rm -f "$tmp"
