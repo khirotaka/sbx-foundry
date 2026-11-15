@@ -1,0 +1,197 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+kind: mixin
+displayName: agent-sandbox dev
+description: kubernetes-sigs/agent-sandbox の TypeScript SDK 開発用。unit / e2e (kind) テストを回せる環境。
+
+version: "0.1.2"
+
+# base-kit: bash ログインシェル、sshd（Claude Desktop 接続）。
+# mise: 公式 sbx/mise。Go / Node / Python / kind / kubectl の導入に使う。
+# 署名用の sbx/git-ssh-sign は、base-kit と同様に別途 --kit で一緒に載せる。
+requires: ["base-kit", "mise"]
+
+capabilities:
+  # 導入と実行で同じホストを許可する（YAML アンカーで共有。トップレベルに置くと
+  # 未知のキーとして strict decoding に弾かれるのでここに置く）。
+  # ホストが足りないときは、拒否されたホストが sbx のログに出るのでここに足す。
+  # 一覧は repo の Dockerfile と dev/tools から拾ったもの。
+  - type: com.docker.sandbox/network-policy@1
+    config:
+      install: &hosts
+        allow:
+          # mise 本体のツール取得（kind、python-build-standalone、aqua 経由のバイナリ）
+          - github.com
+          - api.github.com
+          - objects.githubusercontent.com
+          - release-assets.githubusercontent.com
+          # Go（mise の go、toolchain、go mod / go tool）
+          - go.dev
+          - dl.google.com
+          - proxy.golang.org
+          - sum.golang.org
+          - storage.googleapis.com
+          # Node.js / npm（TypeScript SDK と e2e の npm install）
+          - nodejs.org
+          - registry.npmjs.org
+          # Python（PyYAML、unit テストの venv、イメージ内の pip install）
+          - pypi.org
+          - files.pythonhosted.org
+          # kubectl（aqua 経由）
+          - dl.k8s.io
+          - cdn.dl.k8s.io
+          # コンテナイメージ（kindest/node、golang、python、debian、buildkit）
+          - registry-1.docker.io
+          - auth.docker.io
+          - production.cloudflare.docker.com
+          - gcr.io
+          - registry.k8s.io
+          # chrome-sandbox イメージの apt
+          - deb.debian.org
+          # 注意: kind の docker network (172.16.0.0/12) はここに書かない。
+          # proxy 経由の通信はホスト側から接続しにいくので、許可しても 502 になるだけで、
+          # ホスト側の LAN への許可になる。proxy を迂回する設定は下の hook で入れる。
+      runtime: *hosts
+
+  - type: com.docker.sandbox/lifecycle@1
+    config:
+      install:
+        - description: cgo 用の C コンパイラを入れる（go test -race が要求する）
+          user: "0"
+          env: [HTTP_PROXY, HTTPS_PROXY, http_proxy, https_proxy, NO_PROXY, no_proxy]
+          command: |
+            set -eu
+            # make test-unit は Go のテストを -race 付きで回す。-race は cgo を要求し、
+            # C コンパイラが無いと Go は cgo を自動で無効にする。
+            # base は Debian 13。apt 用のホスト (deb.debian.org) は上で許可済み。
+            command -v apt-get >/dev/null 2>&1 || {
+              echo "[agent-sandbox] apt-get not found: cannot install gcc" >&2
+              exit 1
+            }
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y -qq --no-install-recommends gcc libc6-dev
+
+        - description: Go / Node / Python / kind / kubectl を mise で導入し、PyYAML を入れる
+          user: "1000"
+          # hook の環境は deny-by-default。mise と pip が proxy 経由で出るために必要。
+          env:
+            - HTTP_PROXY
+            - HTTPS_PROXY
+            - http_proxy
+            - https_proxy
+            - NO_PROXY
+            - no_proxy
+            - SSL_CERT_FILE
+            - REQUESTS_CA_BUNDLE
+          command: |
+            set -eu
+            export HOME=/home/agent
+
+            # 版の根拠:
+            #  - go: go.mod の toolchain と各 Dockerfile の golang イメージ
+            #  - node: dev/tools/shared/node.py の固定版 (>=22 を要求)
+            #  - python: sandbox-router 等の Dockerfile が python:3.14
+            #  - kind / kubectl: 固定していない（latest）。再現性が要るなら版を書く。
+            mise use -g go@1.27.3 node@22.22.0 python@3.14 kubectl@latest
+
+            # kind は PATH に載せず、導入だけする（`mise use` しない）。
+            # PATH 上の `kind` は、次の hook が /usr/local/bin に置くラッパーだけにする。
+            # ラッパーは本物の kind の場所をこのファイルから読む。
+            mise install kind@latest
+            mkdir -p "$HOME/.local/share/agent-sandbox"
+            mise exec kind@latest -- sh -c 'command -v kind' \
+              > "$HOME/.local/share/agent-sandbox/kind-real"
+            test -x "$(cat "$HOME/.local/share/agent-sandbox/kind-real")"
+
+            # dev/tools/deploy-to-kube などが system の python3 で `import yaml` する。
+            # (make test-unit の venv は scripts 側で作るので、ここは e2e 用)
+            mise exec python -- python -m pip install --quiet 'pyyaml>=6.0'
+
+        - description: ローカル宛の通信が egress proxy を通らないようにする（base-kit の NO_PROXY 拡張）
+          user: "0"
+          command: |
+            set -eu
+            # sandbox の HTTP(S)_PROXY は、ホスト側から接続しにいく。kind の docker network
+            # (172.16.0.0/12) は VM の中にしか無いので、proxy を通すと 403 / 502 になる。
+            # Python e2e (gateway mode) が gateway の IP (172.19.0.x:80) へ HTTP でつなぐ。
+            # base-kit が、ここの宛先を ssh セッションの NO_PROXY / no_proxy に足す。
+            # (小文字の no_proxy を requests が優先するので、両方に入る。)
+            mkdir -p /etc/base-kit/no-proxy.d
+            cat > /etc/base-kit/no-proxy.d/agent-sandbox.list <<'EOF'
+            172.16.0.0/12
+            192.0.2.0
+            EOF
+            chmod 0644 /etc/base-kit/no-proxy.d/agent-sandbox.list
+
+        - description: kind ラッパーを入れる（作成直後に proxy の CA を node に信頼させる）
+          user: "0"
+          command: |
+            set -eu
+            # sandbox の egress proxy は TLS を中継し、proxy 独自の CA で署名した証明書を返す。
+            # VM はその CA を信頼するが、kind node の containerd は信頼しないため、
+            # node 内の image pull が x509: certificate signed by unknown authority で失敗する。
+            # make test-e2e は毎回 kind create cluster で作り直すので、作成後に毎回 CA を入れる。
+            cat > /usr/local/bin/kind <<'WRAP'
+            #!/bin/sh
+            # Installed by the agent-sandbox kit.
+            # `kind create cluster` のときだけ、成功後に proxy の CA を各 node へ入れる。
+            # それ以外のサブコマンドは本物の kind にそのまま渡す。
+            real_file="${XDG_DATA_HOME:-$HOME/.local/share}/agent-sandbox/kind-real"
+            real=$(cat "$real_file" 2>/dev/null) || real=
+            if [ -z "$real" ] || [ ! -x "$real" ]; then
+              echo "[agent-sandbox] real kind not found (see $real_file)" >&2
+              exit 127
+            fi
+            if [ "${1:-}" != create ] || [ "${2:-}" != cluster ]; then
+              exec "$real" "$@"
+            fi
+
+            "$real" "$@"
+            rc=$?
+            [ "$rc" -eq 0 ] || exit "$rc"
+
+            name=kind
+            prev=
+            for a in "$@"; do
+              [ "$prev" = --name ] && name=$a
+              case "$a" in --name=*) name=${a#--name=} ;; esac
+              prev=$a
+            done
+
+            if [ -z "${PROXY_CA_CERT_B64:-}" ]; then
+              echo "[agent-sandbox] PROXY_CA_CERT_B64 is empty; skip trusting the proxy CA in kind nodes" >&2
+              exit 0
+            fi
+            ca=$(mktemp)
+            printf '%s' "$PROXY_CA_CERT_B64" | base64 -d > "$ca" || {
+              echo "[agent-sandbox] cannot decode PROXY_CA_CERT_B64; skip" >&2
+              rm -f "$ca"
+              exit 0
+            }
+            for node in $(docker ps -q --filter "label=io.x-k8s.kind.cluster=$name"); do
+              docker cp "$ca" "$node:/usr/local/share/ca-certificates/sbx-proxy-ca.crt" \
+                && docker exec "$node" sh -c 'update-ca-certificates >/dev/null && systemctl restart containerd' \
+                || echo "[agent-sandbox] failed to trust the proxy CA in node $node" >&2
+            done
+            rm -f "$ca"
+            exit 0
+            WRAP
+            chmod 0755 /usr/local/bin/kind
+
+      startup:
+        - description: kind が使う /dev/kmsg を用意する（無いと kubelet が起動しない）
+          user: "0"
+          # 未検証。Docker Sandboxes の VM では /dev/kmsg が作られず、そのまま
+          # `kind create cluster` すると node が立ち上がらないことがある。
+          # 特権コンテナ（kind node）は dockerd から見える /dev のデバイスを引き継ぐので、
+          # 先に dockerd の側に実体を作る。起動のたびに /dev が作り直されるので startup。
+          command: |
+            if [ ! -e /dev/kmsg ]; then
+              mknod -m 0660 /dev/kmsg c 1 11 \
+                || mknod -m 0660 /dev/kmsg c 1 3 \
+                || echo "[agent-sandbox] could not create /dev/kmsg" >&2
+            fi
+            # kind でよくある "too many open files" / inotify 枯渇への備え。
+            sysctl -w fs.inotify.max_user_watches=524288 fs.inotify.max_user_instances=512 \
+              >/dev/null 2>&1 || true
