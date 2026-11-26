@@ -1,33 +1,62 @@
-lockfile_version: '1'
-apm_version: 0.35.0
+lockfile_version: '4'
+apm_version: 0.39.0
+manifest_targets:
+- claude
 dependencies:
 - repo_url: docker/sandbox-kit-spec
   name: sandbox-kit-spec
   host: github.com
-  resolved_commit: 6b0bc2504942eb9335447d5035425536d9c495d6
-  resolved_ref: v3.0.0-m.12
-  version: unknown
+  resolved_commit: 7c8b7cd53acc7271184b5c66ab0acb9613df56c7
+  resolved_ref: v3.0.0-m.14
+  version: 0.0.0
   package_type: skill_bundle
   deployed_files:
   - .claude/skills/create-kit-v3
+  - .claude/skills/create-kit-v3/LICENSE
   - .claude/skills/create-kit-v3/RECIPES.md
   - .claude/skills/create-kit-v3/SKILL.md
   - .claude/skills/migrate-kit-to-v3
   - .claude/skills/migrate-kit-to-v3/FIELD-MAPPING.md
+  - .claude/skills/migrate-kit-to-v3/LICENSE
   - .claude/skills/migrate-kit-to-v3/SKILL.md
+  - .claude/skills/release-notes
+  - .claude/skills/release-notes/LICENSE
+  - .claude/skills/release-notes/SKILL.md
   - .claude/skills/sbxenv
+  - .claude/skills/sbxenv/LICENSE
   - .claude/skills/sbxenv/REFERENCE.md
   - .claude/skills/sbxenv/SKILL.md
   - .claude/skills/sbxenv/scripts/kits.py
   deployed_file_hashes:
-    .claude/skills/create-kit-v3/RECIPES.md: sha256:00a08961d560035a7cb161aff4eea68ed42d8ef1e410d56c2f2b3fafd8f39a3d
-    .claude/skills/create-kit-v3/SKILL.md: sha256:a9cc62b948b35c9e131b70999719538a8d5f6aff0f64665ad63c5e1c5a1e0bac
-    .claude/skills/migrate-kit-to-v3/FIELD-MAPPING.md: sha256:dd4319334d5adf59c23299caf5cd6f03571163975650d51f04c8e21a054a8cd4
-    .claude/skills/migrate-kit-to-v3/SKILL.md: sha256:4147a411641edb15d937a0ef784fcaf2b04c272bae5f606c71a9d8bc21a2601e
+    .claude/skills/create-kit-v3/LICENSE: sha256:b3866ed38c95e0801eeca5336baf3eea993e1b092dcdc29472060a8da8f705ec
+    .claude/skills/create-kit-v3/RECIPES.md: sha256:99e1e7ae99c6d3ee6323b4c14d3293a5a79f8c465e3c366a2f7ed0a2abfb965c
+    .claude/skills/create-kit-v3/SKILL.md: sha256:308fdc4641a18279aa77d6369e8103995de996bc4f30cda3c5f3fb6b7ac4df49
+    .claude/skills/migrate-kit-to-v3/FIELD-MAPPING.md: sha256:69d5a0686e0267b158ba373445bb095ad1037867c7e5f39503451045729e33f4
+    .claude/skills/migrate-kit-to-v3/LICENSE: sha256:b3866ed38c95e0801eeca5336baf3eea993e1b092dcdc29472060a8da8f705ec
+    .claude/skills/migrate-kit-to-v3/SKILL.md: sha256:87f27c63e3a64b3ad636a790104e755e7823fd80c11c7760e3dccf1e817d4e8a
+    .claude/skills/release-notes/LICENSE: sha256:b3866ed38c95e0801eeca5336baf3eea993e1b092dcdc29472060a8da8f705ec
+    .claude/skills/release-notes/SKILL.md: sha256:3356042c721c825545ea6742f9195a37c2ce5bcb223491b258a88e138a9838b8
+    .claude/skills/sbxenv/LICENSE: sha256:b3866ed38c95e0801eeca5336baf3eea993e1b092dcdc29472060a8da8f705ec
     .claude/skills/sbxenv/REFERENCE.md: sha256:e1d09358f496bb9cfb6f267127eb12fa985f6a848204379ec018d3cd723b0ffe
-    .claude/skills/sbxenv/SKILL.md: sha256:8ea41a5cde0014d37e6e3dc7ce7329ae93d094e65859bd3aa502553022114d29
-    .claude/skills/sbxenv/scripts/kits.py: sha256:1ca05d5ff22734f7d7c8e07bf6e26ede2d1fd9f0f9e99f425eb8116fba0e05b8
-  content_hash: sha256:2f8c5bd7f71662623b32813ca43ed86a4669bccecd99f2d9e5d17c5dcfd06351
+    .claude/skills/sbxenv/SKILL.md: sha256:3231ca9767421269bc8441876435a4570893603cbbed2936258632d938fb0774
+    .claude/skills/sbxenv/scripts/kits.py: sha256:24aaf7307078bc6f2a7bf14b152346a4951ce50996540daf39e455665a5271b7
+  content_hash: sha256:2ad7f0771282f485015517706fb5bcf98f7c1330dd6c95a5022b2d22de848e7f
+  carried_licenses:
+  - path: examples/review-skill/content/LICENSE
+    source: LICENSE
+    hash: sha256:b3866ed38c95e0801eeca5336baf3eea993e1b092dcdc29472060a8da8f705ec
+  - path: skills/create-kit-v3/LICENSE
+    source: LICENSE
+    hash: sha256:b3866ed38c95e0801eeca5336baf3eea993e1b092dcdc29472060a8da8f705ec
+  - path: skills/migrate-kit-to-v3/LICENSE
+    source: LICENSE
+    hash: sha256:b3866ed38c95e0801eeca5336baf3eea993e1b092dcdc29472060a8da8f705ec
+  - path: skills/release-notes/LICENSE
+    source: LICENSE
+    hash: sha256:b3866ed38c95e0801eeca5336baf3eea993e1b092dcdc29472060a8da8f705ec
+  - path: skills/sbxenv/LICENSE
+    source: LICENSE
+    hash: sha256:b3866ed38c95e0801eeca5336baf3eea993e1b092dcdc29472060a8da8f705ec
 deployments:
 - kind: project-relative
   target: claude
@@ -40,13 +69,22 @@ deployments:
   content_hash: null
 - kind: project-relative
   target: claude
+  value: .claude/skills/create-kit-v3/LICENSE
+  runtime: null
+  scope: project
+  owners:
+  - docker/sandbox-kit-spec
+  active_owner: docker/sandbox-kit-spec
+  content_hash: sha256:b3866ed38c95e0801eeca5336baf3eea993e1b092dcdc29472060a8da8f705ec
+- kind: project-relative
+  target: claude
   value: .claude/skills/create-kit-v3/RECIPES.md
   runtime: null
   scope: project
   owners:
   - docker/sandbox-kit-spec
   active_owner: docker/sandbox-kit-spec
-  content_hash: sha256:00a08961d560035a7cb161aff4eea68ed42d8ef1e410d56c2f2b3fafd8f39a3d
+  content_hash: sha256:99e1e7ae99c6d3ee6323b4c14d3293a5a79f8c465e3c366a2f7ed0a2abfb965c
 - kind: project-relative
   target: claude
   value: .claude/skills/create-kit-v3/SKILL.md
@@ -55,7 +93,7 @@ deployments:
   owners:
   - docker/sandbox-kit-spec
   active_owner: docker/sandbox-kit-spec
-  content_hash: sha256:a9cc62b948b35c9e131b70999719538a8d5f6aff0f64665ad63c5e1c5a1e0bac
+  content_hash: sha256:308fdc4641a18279aa77d6369e8103995de996bc4f30cda3c5f3fb6b7ac4df49
 - kind: project-relative
   target: claude
   value: .claude/skills/migrate-kit-to-v3
@@ -73,7 +111,16 @@ deployments:
   owners:
   - docker/sandbox-kit-spec
   active_owner: docker/sandbox-kit-spec
-  content_hash: sha256:dd4319334d5adf59c23299caf5cd6f03571163975650d51f04c8e21a054a8cd4
+  content_hash: sha256:69d5a0686e0267b158ba373445bb095ad1037867c7e5f39503451045729e33f4
+- kind: project-relative
+  target: claude
+  value: .claude/skills/migrate-kit-to-v3/LICENSE
+  runtime: null
+  scope: project
+  owners:
+  - docker/sandbox-kit-spec
+  active_owner: docker/sandbox-kit-spec
+  content_hash: sha256:b3866ed38c95e0801eeca5336baf3eea993e1b092dcdc29472060a8da8f705ec
 - kind: project-relative
   target: claude
   value: .claude/skills/migrate-kit-to-v3/SKILL.md
@@ -82,7 +129,34 @@ deployments:
   owners:
   - docker/sandbox-kit-spec
   active_owner: docker/sandbox-kit-spec
-  content_hash: sha256:4147a411641edb15d937a0ef784fcaf2b04c272bae5f606c71a9d8bc21a2601e
+  content_hash: sha256:87f27c63e3a64b3ad636a790104e755e7823fd80c11c7760e3dccf1e817d4e8a
+- kind: project-relative
+  target: claude
+  value: .claude/skills/release-notes
+  runtime: null
+  scope: project
+  owners:
+  - docker/sandbox-kit-spec
+  active_owner: docker/sandbox-kit-spec
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/release-notes/LICENSE
+  runtime: null
+  scope: project
+  owners:
+  - docker/sandbox-kit-spec
+  active_owner: docker/sandbox-kit-spec
+  content_hash: sha256:b3866ed38c95e0801eeca5336baf3eea993e1b092dcdc29472060a8da8f705ec
+- kind: project-relative
+  target: claude
+  value: .claude/skills/release-notes/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - docker/sandbox-kit-spec
+  active_owner: docker/sandbox-kit-spec
+  content_hash: sha256:3356042c721c825545ea6742f9195a37c2ce5bcb223491b258a88e138a9838b8
 - kind: project-relative
   target: claude
   value: .claude/skills/sbxenv
@@ -92,6 +166,15 @@ deployments:
   - docker/sandbox-kit-spec
   active_owner: docker/sandbox-kit-spec
   content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/sbxenv/LICENSE
+  runtime: null
+  scope: project
+  owners:
+  - docker/sandbox-kit-spec
+  active_owner: docker/sandbox-kit-spec
+  content_hash: sha256:b3866ed38c95e0801eeca5336baf3eea993e1b092dcdc29472060a8da8f705ec
 - kind: project-relative
   target: claude
   value: .claude/skills/sbxenv/REFERENCE.md
@@ -109,7 +192,7 @@ deployments:
   owners:
   - docker/sandbox-kit-spec
   active_owner: docker/sandbox-kit-spec
-  content_hash: sha256:8ea41a5cde0014d37e6e3dc7ce7329ae93d094e65859bd3aa502553022114d29
+  content_hash: sha256:3231ca9767421269bc8441876435a4570893603cbbed2936258632d938fb0774
 - kind: project-relative
   target: claude
   value: .claude/skills/sbxenv/scripts/kits.py
@@ -118,4 +201,4 @@ deployments:
   owners:
   - docker/sandbox-kit-spec
   active_owner: docker/sandbox-kit-spec
-  content_hash: sha256:1ca05d5ff22734f7d7c8e07bf6e26ede2d1fd9f0f9e99f425eb8116fba0e05b8
+  content_hash: sha256:24aaf7307078bc6f2a7bf14b152346a4951ce50996540daf39e455665a5271b7

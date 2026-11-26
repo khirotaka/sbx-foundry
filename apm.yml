@@ -10,7 +10,7 @@ targets:
 dependencies:
   apm: 
     - git: docker/sandbox-kit-spec
-      ref: v3.0.0-m.12
+      ref: v3.0.0-m.14
   mcp: []
 includes: auto
 scripts: {}
