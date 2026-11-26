@@ -36,7 +36,6 @@ sbx-foundry/
 | --- | --- |
 | ssh ログイン時のシェルを bash にする | install フック（root）で `agent` のログインシェルを bash に変更 |
 | 変更が効かなかった場合の保険 | `/etc/profile.d/00-base-kit-bash.sh` が、対話の sh ログインのときだけ `exec bash -l` |
-
 | DHI のバナーを対話シェルだけにする | `/etc/profile.d/01-dhi.sh` は対話かどうかを見ず、`$HOME` ごとの初回の login shell で ANSI 付きバナーを stdout に出す。`bash -lc` の出力を読むプログラムが壊れるため、元のスクリプトを退避して対話時だけ読み込む |
 | openssh-server を導入して起動 | install フックで apt、startup フックで sshd を起動（公開鍵認証のみ） |
 | `authorized_keys` を作る | 起動のたびに、転送された SSH agent の公開鍵（`ssh-add -L`）から生成 |
