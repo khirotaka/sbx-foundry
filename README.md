@@ -6,7 +6,7 @@
 
 > [!WARNING]
 > Kit v3 は experimental で、仕様が変わる可能性があります。
-> `base-kit/` は `sbx` で実機確認済みです（下の「検証」を参照）。`docker buildx` / `kit-tck` での検証はまだです。
+> `base-kit/` は `sbx` で実機確認済みです（下の「検証」を参照）。`docker buildx` での OCI layout のビルドは通りました。`kit-tck` での検証はまだです。
 
 ## 構成
 
@@ -191,6 +191,26 @@ ssh myproj.sbx
 ```
 
 停止中の sandbox は SSH 接続で自動起動します。Claude Desktop では「+ Add SSH connection」で SSH Host に `myproj.sbx` を入れ、Port と Identity File は空のままにします。
+
+### ghcr から使う（base-kit）
+
+base-kit は OCI イメージとして `ghcr.io/khirotaka/sbx-foundry-base-kit` に公開します（タグは `<version>` と `latest`）。ローカルのパスの代わりに参照で指定できます。
+
+```bash
+sbx create shell \
+  --kit sbx/git-ssh-sign:latest \
+  --kit ghcr.io/khirotaka/sbx-foundry-base-kit:0.2.2 \
+  --name myproj .
+```
+
+> [!NOTE]
+> 公開後の `--kit` での解決は、初回公開時に確認します。
+
+公開はタグ駆動です（[workflow](.github/workflows/publish-base-kit.yml)）。`base-kit/base-kit.yaml` の `version` を上げたうえで、同じ値のタグを push します。
+
+```bash
+git tag base-kit-v0.2.2 && git push origin base-kit-v0.2.2
+```
 
 ## 検証
 
