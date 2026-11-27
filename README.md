@@ -198,7 +198,7 @@ base-kit は OCI イメージとして `ghcr.io/khirotaka/sbx-foundry-base-kit` 
 ```bash
 sbx create shell \
   --kit sbx/git-ssh-sign:latest \
-  --kit ghcr.io/khirotaka/sbx-foundry-base-kit:0.2.2 \
+  --kit ghcr.io/khirotaka/sbx-foundry-base-kit:0.2.3 \
   --name myproj .
 ```
 
@@ -208,7 +208,7 @@ sbx create shell \
 公開はタグ駆動です（[workflow](.github/workflows/publish-base-kit.yml)）。`base-kit/base-kit.yaml` の `version` を上げたうえで、同じ値のタグを push します。
 
 ```bash
-git tag base-kit-v0.2.2 && git push origin base-kit-v0.2.2
+git tag base-kit-v0.2.3 && git push origin base-kit-v0.2.2
 ```
 
 ## 検証

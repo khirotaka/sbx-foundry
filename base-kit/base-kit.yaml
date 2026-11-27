@@ -5,8 +5,8 @@ displayName: Base Kit
 description: 全プロジェクト共通のベース。bash ログインシェルと、Claude Desktop 用の sshd。
 
 # このキット自身のバージョン。provides: ["base-kit"] はここから
-# base-kit@0.2.2 として公開される。宣言を変えたら上げる。
-version: "0.2.2"
+# base-kit@0.2.3 として公開される。宣言を変えたら上げる。
+version: "0.2.3"
 
 # projects/ 配下のキットは `requires: ["base-kit"]` でこのキットを前提にできる。
 provides: ["base-kit"]
@@ -106,8 +106,22 @@ capabilities:
               exit 1
             }
             export DEBIAN_FRONTEND=noninteractive
+
+            # Debian の既定ソースは http://（:80）。社内 proxy が :80 を塞いでいる環境では
+            # apt-get update が失敗し、openssh-server が入らない。:443 に統一する。
+            # deb822 形式 (debian.sources) と旧形式 (sources.list) の両方を書き換える。
+            for f in /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list /etc/apt/sources.list; do
+              [ -f "$f" ] || continue
+              sed -i -E 's#http://(deb\.debian\.org|security\.debian\.org|dhi\.io)#https://\1#g' "$f"
+            done
+
             apt-get update -qq
             apt-get install -y -qq --no-install-recommends openssh-server
+            # 失敗が apt の出力に埋もれて後段で「sshd が無い」になるのを避け、ここで止める。
+            command -v sshd >/dev/null 2>&1 || [ -x /usr/sbin/sshd ] || {
+              echo "[base-kit] openssh-server install failed: sshd not found (check apt sources / proxy)" >&2
+              exit 1
+            }
             ssh-keygen -A
 
         - description: sshd の設定（公開鍵認証のみ、~/.ssh/environment を許可）
