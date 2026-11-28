@@ -1,0 +1,135 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+kind: mixin
+displayName: Quint
+description: Quint（仕様記述言語）の CLI を npm から入れる。Node と Rust evaluator を同梱し、Node は quint 専用。
+sourceUrl: https://github.com/quint-co/quint
+licenses: [Apache-2.0]
+
+# tools/ の kit は base-kit を前提にしない（requires を書かない）。
+# どの workload にも載せられる汎用の道具として作る。
+#
+# 版は 1 か所（args.version）で決める。導入する版、provides、公開時の
+# version / タグがすべてここから展開される。
+version: "${{ kit.args.version }}"
+
+args:
+  version:
+    default: "0.35.0"
+    pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
+    description: Quint のリリース（npm の @informalsystems/quint）
+    buildArg: QUINT_VERSION
+  evaluatorVersion:
+    # quint に埋め込まれた QUINT_EVALUATOR_VERSION と一致させる。
+    # 違うとビルドが失敗する（dockerfile で照合）。quint を上げたら確認すること。
+    default: "0.8.0"
+    pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
+    description: Rust evaluator のリリース（GitHub の evaluator/v<version>）
+    buildArg: QUINT_EVALUATOR_VERSION
+  evaluatorSha256LinuxAmd64:
+    default: "774020b648a887f511d040fd564a8223c62a996b80f8dc50ea24d8630235be51"
+    pattern: '^[0-9a-f]{64}$'
+    description: sha256 of quint_evaluator-x86_64-unknown-linux-gnu.tar.gz
+    buildArg: QUINT_EVALUATOR_SHA256_AMD64
+  evaluatorSha256LinuxArm64:
+    default: "bba4edec6fc51a0491cc54add445b7204819cbcb013bd32222f5e97c00f126ef"
+    pattern: '^[0-9a-f]{64}$'
+    description: sha256 of quint_evaluator-aarch64-unknown-linux-gnu.tar.gz
+    buildArg: QUINT_EVALUATOR_SHA256_ARM64
+  nodeVersion:
+    # quint 専用の Node（PATH には載せない）。engines は >=18。
+    default: "24.22.3"
+    pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
+    description: 同梱する Node.js の版（nodejs.org/dist）
+    buildArg: NODE_VERSION
+  nodeSha256LinuxAmd64:
+    default: "4f2b175a6d53a5c617a80dba2676238a0688cef28c6da4eba35c7d844e66fcfb"
+    pattern: '^[0-9a-f]{64}$'
+    description: sha256 of node-v<nodeVersion>-linux-x64.tar.xz
+    buildArg: NODE_SHA256_AMD64
+  nodeSha256LinuxArm64:
+    default: "6e51a2ada00f0011cc266f65d98922b403d7ad88f809ca2aa615a5fe1ce6e86c"
+    pattern: '^[0-9a-f]{64}$'
+    description: sha256 of node-v<nodeVersion>-linux-arm64.tar.xz
+    buildArg: NODE_SHA256_ARM64
+
+# node / npm は provides しない。PATH に載せない quint 専用の Node なので、
+# 他の kit（mise など）が入れる node と名前を取り合わないようにする。
+provides: ["quint@${{ kit.args.version }}"]
+
+# requires は書かない（意図的）。
+#  - quint と同梱の Node / evaluator は glibc に動的リンクされている。musl（Alpine など）の
+#    workload では動かないが、glibc を表す provides 名は無く、deb/libc6 を要求すると
+#    dpkg を持たない glibc の base まで拒否してしまう。README に書いて済ませる。
+#  - `quint verify`（既定の Apalache、TLC）は JDK 21 以上が要る。verify を使わなければ
+#    不要なので要求しない。tools/temurin を一緒に載せる。
+#  - Veil（`--backend veil`）は git / curl / npm / unzip を要求する。git と curl は
+#    プラットフォームの前提、npm と unzip はラッパーが同梱のものを見せる。
+
+capabilities:
+  # run / test / repl には network は要らない（evaluator を同梱している）。
+  # ここは `quint verify` が初回に取得するものだけ。使わないなら不要なので optional。
+  #  - Apalache: github.com の apalache-mc/apalache のリリース（apalache.tgz）
+  #  - Veil: elan と Lean のツールチェーン、Lake が git で取る Veil とその依存、
+  #    cvc5 のリリース、ProofWidgets の npm パッケージ
+  # 拒否されたホストは `sbx policy log <name> --json` の blocked に出るので、ここに足す。
+  - type: com.docker.sandbox/network-policy@1
+    description: quint verify が Apalache / Veil を初回に取得する
+    optional: true
+    config:
+      runtime:
+        # 実機（quint 0.35.0）で `quint verify` と `quint veil install` を通したときに
+        # 使われたホストだけを書いている。
+        allow:
+          # Apalache、elan、cvc5 のリリースと、Lake の git clone
+          - github.com
+          - release-assets.githubusercontent.com
+          # ProofWidgets のウィジェットのビルド（同梱の npm）
+          - registry.npmjs.org
+          # elan が Lean のツールチェーンの版を引き、取得する
+          - release.lean-lang.org
+          - releases.lean-lang.org
+          # 書かない: Apalache が TLA+ の利用統計を tlaplus-execution-stats-collection01 に
+          # 送ろうとする。拒否されても verify は通る。
+
+  - type: com.docker.sandbox/lifecycle@1
+    config:
+      install:
+        - description: 同梱の Rust evaluator を Quint の設定ディレクトリ（~/.quint）に繋ぐ
+          user: "1000"
+          command: |
+            set -eu
+            # quint は ${QUINT_HOME:-~/.quint}/rust-evaluator-v<ver>/quint_evaluator を探し、
+            # 無ければ GitHub から取得する。~/.quint は Apalache / Veil の取得先でもあり
+            # 書き込みが要るので、QUINT_HOME を読み取り専用の /opt に向けるのではなく、
+            # 版ごとのディレクトリだけをリンクする。overlay は /home/agent に何も置かない。
+            home=${HOME:-/home/agent}
+            for src in /opt/quint/rust-evaluator-v*; do
+              [ -d "$src" ] || continue
+              dst="$home/.quint/$(basename "$src")"
+              mkdir -p "$home/.quint"
+              # 既に実体（ユーザーが自分で入れたもの）があれば触らない。
+              if [ -e "$dst" ] && [ ! -L "$dst" ]; then
+                continue
+              fi
+              ln -sfn "$src" "$dst"
+            done
+
+  - type: com.docker.sandbox/agent-context@2
+    config:
+      content: |
+        # Quint
+
+        `quint` ${{ kit.args.version }} is on PATH at `/usr/local/bin/quint`.
+
+        - `quint typecheck <file>.qnt`, `quint run <file>.qnt --invariant=<name>`,
+          `quint test <file>.qnt` and `quint repl` work offline: the Rust evaluator
+          is preinstalled and linked under `~/.quint`.
+        - `quint verify` (Apalache by default, or `--backend tlc`) needs a JDK >= 21
+          on PATH and downloads Apalache from GitHub on first use.
+        - `quint verify --backend veil` needs Veil; `quint veil status` tells whether
+          it is ready and `quint veil install` sets it up (it downloads Lean and
+          builds Veil, which takes a long time and several GB under `~/.quint/veil`).
+        - The `npm` that Veil uses is bundled with quint and visible only to quint.
+        - If a prerequisite is missing, say so instead of working around it.
+        - Documentation: https://quint.sh/docs

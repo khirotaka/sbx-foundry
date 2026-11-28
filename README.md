@@ -15,6 +15,7 @@ kit は層で重ねます。下の層ほど全プロジェクト共通です。
 ```text
 sbx/git-ssh-sign   公式。SSH 鍵での Git 署名
 base-kit/          共通。ssh ログイン時のシェルを bash にする
+tools/<name>/      汎用のツール導入（公式 sbx/* と同じ粒度。base-kit に依存しない）
 projects/<name>/   プロジェクト固有（network 許可、credential、port、初回セットアップ）
 ```
 
@@ -22,6 +23,9 @@ projects/<name>/   プロジェクト固有（network 許可、credential、port
 sbx-foundry/
 ├── base-kit/
 │   └── base-kit.yaml     # 宣言のみの mixin（provides: base-kit）
+├── tools/
+│   ├── quint/            # Quint CLI（下の節）
+│   └── temurin/          # Eclipse Temurin JDK（下の節）
 └── projects/
     ├── agent-sandbox/    # kubernetes-sigs/agent-sandbox 用（下の節）
     └── <name>/           # base-kit の上に重ねる mixin。requires: ["base-kit"]
@@ -29,6 +33,53 @@ sbx-foundry/
 
 - 公式 kit（<https://hub.docker.com/u/sbx>）で足りるものは自作せず、`--kit` で並べて使います。
 - `projects/<name>/` は `requires: ["base-kit"]` を宣言して、base-kit が無い組み合わせを compose 時に弾きます。
+- `tools/<name>/` は公式 kit と同じく、どの workload にも単体で載せられるように作ります。
+  - `requires` に `base-kit` を書かず、`/etc/base-kit/` などの base-kit の仕組みにも頼りません。
+  - `provides: ["<tool>@<version>"]` を宣言し、`projects/` 側から `requires: ["<tool>"]` で前提にできるようにします。
+  - 道具は `<kit>.dockerfile` で overlay に焼き込み（`/usr/local/bin`、`/opt`）、install フックでの取得は避けます。`/home/agent` には何も置きません。
+  - 版は `args.version` の 1 か所で決め、ビルド時に実物の版と照合します。
+
+## tools/quint
+
+[Quint](https://quint.sh/) の CLI を npm（`@informalsystems/quint`）から入れます。Node は kit 専用のものを同梱し、sandbox の PATH には載せません。`quint verify`（Apalache / TLC）を使うなら、[tools/temurin](#toolstemurin) を一緒に載せます。
+
+```bash
+sbx create shell \
+  --kit /path/to/sbx-foundry/tools/quint \
+  --kit /path/to/sbx-foundry/tools/temurin \
+  --name myspec .
+```
+
+| 内容 | 仕組み |
+| --- | --- |
+| `quint` 0.35.0（`/usr/local/bin/quint`） | overlay。ラッパーで、同梱の Node で npm 版の quint を起動する。`quint --version` が固定した版と一致することをビルド時に確認 |
+| Node.js 24.22.3（`/opt/quint/node/`） | overlay。quint 専用。ラッパーが quint とその子プロセスにだけ PATH の先頭へ足す。Veil の Lake が呼ぶ `npm` はこれになる |
+| `unzip`（`/opt/quint/libexec/`） | overlay。静的リンクの busybox。Veil が Linux で cvc5 の展開に使う。ラッパーが PATH の**末尾**に足すので、base に unzip があればそちらが使われる |
+| Rust evaluator v0.8.0（`/opt/quint/rust-evaluator-v0.8.0/`） | overlay。`quint run` / `test` / `repl` の既定 backend は rust で、無いと初回に api.github.com から取得しにいく。同梱して、install フックで `~/.quint/` からリンクする |
+| network | runtime に optional で許可。`quint verify` が Apalache を、`quint veil install` が elan / Lean / Veil の依存を取得するため |
+
+- **Veil:** `quint verify --backend veil` の前に `quint veil install` を 1 回実行します。Lean のツールチェーンを取得して Veil をビルドします（実機で約 3 分半、`~/.quint/veil` が約 5 GB）。`quint veil status` で準備できているか分かります。
+- **なぜ npm 版か:** 単一バイナリ版（Node SEA）は npm を含みません。Veil は Lake 経由で `npm` を呼ぶので、どちらにしても Node 一式が要ります。
+- **Node を PATH に載せない理由:** `node` / `npm` を provides すると、mise などが入れる node と名前や PATH を取り合います。quint の子プロセスにだけ見せれば足ります。
+- **版を上げるとき:** quint に埋め込まれた evaluator の版と `args.evaluatorVersion` が違うと、ビルドが失敗します。quint を上げるときは `version` と `evaluatorVersion`、evaluator の sha256 をまとめて更新します（sha256 は `gh api repos/quint-co/quint/releases/tags/evaluator/v<version> --jq '.assets[]|.name+" "+.digest'` で取れます）。
+- Node と evaluator は glibc に動的リンクされています。Alpine などの musl の workload では動きません。
+- `QUINT_HOME`（既定 `~/.quint`）は Apalache と Veil の取得先でもあり、書き込みが要るため、`/opt` には向けません。
+- Apalache は TLA+ の利用統計を `tlaplus-execution-stats-collection01` に送ろうとします。許可していないので拒否されますが、verify は通ります。
+
+確認済み（sbx 0.54.1、`shell` workload、temurin と併用）: compose、install フック、オフラインでの `quint run`（evaluator を取得しにいかない）、`quint verify`（Apalache）、`quint veil install`、`quint verify --backend veil`。
+
+## tools/temurin
+
+[Eclipse Temurin](https://adoptium.net/)（OpenJDK）21 を、Adoptium の公式 tarball から `/opt/java/temurin` に入れます。
+
+| 内容 | 仕組み |
+| --- | --- |
+| JDK 21.0.13.1+2 | overlay。sha256 を照合し、`java -version` が固定した版と一致することをビルド時に確認 |
+| `JAVA_HOME` / `PATH` | 最終ステージの `ENV`。PATH は合成時に workload の PATH へ追記される |
+| provides | `java@<version>` と `temurin@<version>`。他の JDK kit と一緒に載せると compose で弾かれる（`JAVA_HOME` がぶつかるため） |
+
+- Quint 以外でも、Java が要るプロジェクトで使えるように、quint とは別の kit にしています。
+- 版を上げるときは `version`、`build`、2 つの sha256 を更新します（`curl 'https://api.adoptium.net/v3/assets/latest/21/hotspot?os=linux&image_type=jdk&architecture=aarch64'` などで取れます）。
 
 ## base-kit がすること
 
