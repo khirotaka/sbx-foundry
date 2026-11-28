@@ -262,6 +262,19 @@ sbx create shell \
 git tag base-kit-v0.2.3 && git push origin base-kit-v0.2.2
 ```
 
+### ghcr から使う（tools）
+
+`tools/<name>/` は `ghcr.io/khirotaka/sbx-foundry-<name>` に公開します（タグは `<version>` と `latest`）。[workflow](.github/workflows/tools.yml) は次のように動きます。
+
+- PR と main への push: 全 kit を `linux/amd64,linux/arm64` の OCI layout にビルドし、`kit-tck validate --layout` で検査します（push はしません）。
+- タグ `tools-<name>-v<version>` の push: タグの版と `args.version` の既定値を照合したうえで公開し、公開後のイメージも `kit-tck validate` で検査します。
+
+```bash
+git tag tools-quint-v0.35.0 && git push origin tools-quint-v0.35.0
+```
+
+kit-tck の版は `apm.yml` の `docker/sandbox-kit-spec` の `ref` から取ります（skill と同じリポジトリの同じ版）。setup-tck action は commit SHA で固定しており、その SHA が `apm.lock.yaml` の `resolved_commit` と違うと CI が失敗します。skill の版を上げたら、`tools.yml` の `setup-tck@<sha>` も合わせて更新します。
+
 ## 検証
 
 `sbx kit validate` は v3 のソース kit を受け付けないため、`inspect` を使います。

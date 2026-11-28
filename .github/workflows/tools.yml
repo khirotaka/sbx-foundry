@@ -1,0 +1,159 @@
+name: tools
+
+# tools/<name>/ の kit をビルドし、kit-tck で適合性を確認する。
+#  - PR / main への push: 全 kit を OCI layout にビルドして `kit-tck validate --layout` で検査（push しない）
+#  - タグ `tools-<name>-v<version>` の push: その kit を ghcr に公開し、公開後のイメージも検査する
+#    例: git tag tools-quint-v0.35.0 && git push origin tools-quint-v0.35.0
+#
+# kit-tck の版は apm.yml の docker/sandbox-kit-spec の ref（skill と同じリポジトリ・同じ版）から取る。
+# setup-tck action 自体は `uses:` に式を書けないので commit SHA で固定し、
+# その SHA が apm.lock.yaml の resolved_commit と一致することを plan ジョブで確認する。
+# skill の版を上げたら（apm install 後）、下の setup-tck の SHA とコメントも合わせて更新すること。
+on:
+  pull_request:
+    paths:
+      - "tools/**"
+      - "apm.yml"
+      - "apm.lock.yaml"
+      - ".github/workflows/tools.yml"
+  push:
+    branches: [main]
+    # タグの push では paths は評価されない
+    paths:
+      - "tools/**"
+      - "apm.yml"
+      - "apm.lock.yaml"
+      - ".github/workflows/tools.yml"
+    tags: ["tools-*-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      tck-version: ${{ steps.tck.outputs.version }}
+      kits: ${{ steps.kits.outputs.kits }}
+      publish: ${{ steps.kits.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: kit-tck の版を apm.yml から決め、action の SHA と apm.lock.yaml を照合
+        id: tck
+        run: |
+          set -euo pipefail
+          ref=$(yq -r '.dependencies.apm[] | select(.git == "docker/sandbox-kit-spec") | .ref' apm.yml)
+          lock_ref=$(yq -r '.dependencies[] | select(.repo_url == "docker/sandbox-kit-spec") | .resolved_ref' apm.lock.yaml)
+          lock_commit=$(yq -r '.dependencies[] | select(.repo_url == "docker/sandbox-kit-spec") | .resolved_commit' apm.lock.yaml)
+          action_commit=$(sed -n 's|.*docker/sandbox-kit-spec/actions/setup-tck@\([0-9a-f]\{40\}\).*|\1|p' .github/workflows/tools.yml | head -n 1)
+          echo "apm.yml ref=$ref lock ref=$lock_ref lock commit=$lock_commit action commit=$action_commit"
+          [ -n "$ref" ] && [ "$ref" != "null" ] || { echo "::error::docker/sandbox-kit-spec not found in apm.yml"; exit 1; }
+          [ "$ref" = "$lock_ref" ] || { echo "::error::apm.lock.yaml ($lock_ref) is stale against apm.yml ($ref); run apm install"; exit 1; }
+          [ "$lock_commit" = "$action_commit" ] || {
+            echo "::error::setup-tck is pinned to $action_commit but apm.lock.yaml resolves $ref to $lock_commit; update the uses: line in tools.yml"
+            exit 1
+          }
+          echo "version=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: 対象の kit を決める
+        id: kits
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/tools-* ]]; then
+            name="${GITHUB_REF_NAME#tools-}"
+            name="${name%-v*}"
+            [ -f "tools/$name/$name.yaml" ] || { echo "::error::tools/$name/$name.yaml not found for tag $GITHUB_REF_NAME"; exit 1; }
+            kits=$(jq -cn --arg n "$name" '[$n]')
+            publish=true
+          else
+            kits=$(find tools -mindepth 2 -maxdepth 2 -name '*.yaml' \
+              | awk -F/ '$3 == $2 ".yaml" { print $2 }' | sort | jq -Rcs 'split("\n") | map(select(. != ""))')
+            publish=false
+          fi
+          echo "kits=$kits publish=$publish"
+          echo "kits=$kits" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+
+  kit:
+    needs: plan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        kit: ${{ fromJSON(needs.plan.outputs.kits) }}
+    env:
+      KIT: ${{ matrix.kit }}
+      IMAGE: ghcr.io/${{ github.repository_owner }}/sbx-foundry-${{ matrix.kit }}
+      PLATFORMS: linux/amd64,linux/arm64
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: descriptor の version を読む
+        run: |
+          set -euo pipefail
+          version=$(yq -r '.args.version.default' "tools/$KIT/$KIT.yaml")
+          [ -n "$version" ] && [ "$version" != "null" ] || { echo "::error::args.version.default missing in tools/$KIT/$KIT.yaml"; exit 1; }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "$KIT $version"
+
+      - name: タグと descriptor の version が一致するか確認
+        if: needs.plan.outputs.publish == 'true'
+        run: |
+          tag_version="${GITHUB_REF_NAME##*-v}"
+          echo "tag=$tag_version descriptor=$VERSION"
+          [ "$tag_version" = "$VERSION" ] || {
+            echo "::error::tag ($tag_version) and tools/$KIT/$KIT.yaml args.version ($VERSION) differ"
+            exit 1
+          }
+
+      # build ステージがターゲットの arch で RUN する（java -version などの照合）ため
+      - uses: docker/setup-qemu-action@v4
+
+      - uses: docker/setup-buildx-action@v4
+        with:
+          driver: docker-container
+
+      - uses: docker/sandbox-kit-spec/actions/setup-tck@7c8b7cd53acc7271184b5c66ab0acb9613df56c7 # v3.0.0-m.14
+        with:
+          version: ${{ needs.plan.outputs.tck-version }}
+
+      - name: OCI layout にビルド
+        run: |
+          set -euo pipefail
+          docker buildx build "tools/$KIT" -f "tools/$KIT/$KIT.yaml" \
+            --platform "$PLATFORMS" --provenance=mode=min \
+            --output "type=oci,dest=$RUNNER_TEMP/oci,tar=false"
+          digest=$(jq -r '.manifests[0].digest' "$RUNNER_TEMP/oci/index.json")
+          echo "LAYOUT_DIGEST=$digest" >> "$GITHUB_ENV"
+          echo "layout digest: $digest"
+
+      - name: kit-tck validate（OCI layout）
+        run: kit-tck validate --layout "$RUNNER_TEMP/oci" "$LAYOUT_DIGEST"
+
+      - uses: docker/login-action@v4
+        if: needs.plan.outputs.publish == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: build and push
+        if: needs.plan.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          docker buildx build "tools/$KIT" -f "tools/$KIT/$KIT.yaml" \
+            --platform "$PLATFORMS" --provenance=mode=min --push \
+            --metadata-file "$RUNNER_TEMP/metadata.json" \
+            -t "$IMAGE:$VERSION" -t "$IMAGE:latest"
+          digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/metadata.json")
+          echo "PUSHED_DIGEST=$digest" >> "$GITHUB_ENV"
+          echo "pushed: $IMAGE@$digest"
+
+      - name: kit-tck validate（公開後のイメージ）
+        if: needs.plan.outputs.publish == 'true'
+        run: kit-tck validate "$IMAGE@$PUSHED_DIGEST"
